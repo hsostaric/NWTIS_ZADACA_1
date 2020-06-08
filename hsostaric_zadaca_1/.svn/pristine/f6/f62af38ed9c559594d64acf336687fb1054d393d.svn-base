@@ -1,0 +1,135 @@
+/*
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
+ */
+package org.foi.nwtis.hsostaric.zadaca_1;
+
+import java.io.File;
+import java.io.IOException;
+import java.net.ServerSocket;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import org.foi.nwtis.hsostaric.konfiguracije.*;
+
+/**
+ *
+ * @author Hrvoje Šoštarić
+ */
+public class ServerAviona {
+
+    public Konfiguracija Konfiguracija;
+    public String UlazniParametri = "";
+    public String RegEx = "";
+    public ServerSocket serverSocket;
+    public int PortAvioni=0;
+
+    public static void main(String[] args) {
+      
+        try {
+            ServerAviona serverAviona = new ServerAviona();
+            serverAviona.Kreni(args);
+        } catch (NemaKonfiguracije
+                | NeispravnaKonfiguracija 
+                    | IOException ex) {
+            System.err.println(ex.getMessage());
+        }
+    }
+
+    public void Kreni(String[] args) throws NemaKonfiguracije, NeispravnaKonfiguracija, IOException {
+        UlazniParametri = pretvoriUlazneParametreUString(args);
+        RegEx = "^ServerAviona ([\\w]+(.xml|.txt|.bin|.json)) --brojDretvi ([1-9])+$";
+        provijeriRegex(UlazniParametri, RegEx);
+        ProvijeriPostojanjeDatoteke(args[1]);
+        Konfiguracija = KonfiguracijaApstraktna.preuzmiKonfiguraciju(args[1]);
+        ProvjeriPostojanostKonfiguracijeUPostavkama(Konfiguracija,"port.avioni");
+        PostaviPortAvioni();
+        if(this.ZauzetostPorta(PortAvioni)==false){
+            throw new IOException("Mrežna utičnica vrijednosti port.avioni je zauzeta");
+        }
+        ProvjeraDatoteka();
+        
+    }
+    
+    public String pretvoriUlazneParametreUString(String[] args) {
+        StringBuilder ulaz = new StringBuilder();
+        for (String zapis : args) {
+            ulaz.append(zapis)
+                    .append(" ");
+        }
+        return ulaz.
+                toString()
+                .trim();
+    }
+
+    public void provijeriRegex(String ulaz, String regExIzraz) {
+        Pattern pattern = Pattern.compile(regExIzraz);
+        Matcher m = pattern.matcher(ulaz);
+        if (!m.find()) {
+            System.err.println("Greška sa ulaznim parametrima. ");
+            System.exit(0);
+        }
+    }
+
+    public boolean ProvijeriPostojanjeDatoteke(String datoteka) throws NemaKonfiguracije {
+        File file = new File(datoteka);
+        if (!file.exists()) {
+            throw new NemaKonfiguracije("Ne postoji unešena datoteka");
+        }
+        return true;
+    }
+
+    public boolean ProvjeriPostojanostKonfiguracijeUPostavkama(Konfiguracija konfiguracija, String kljucPostavke) throws NeispravnaKonfiguracija {
+        switch (kljucPostavke) {
+            case "port.avioni":
+                   return ProvjeriIspravnostPostavkePorta(kljucPostavke);
+            default:
+                System.err.println("Pogrešan ključ konfiguracije.");
+                return false;
+        }
+    }
+
+    public boolean ProvjeriIspravnostPostavkePorta(String naziv) throws NeispravnaKonfiguracija {
+        boolean stanje = true;
+        int vrijednostPorta;
+        if (!Konfiguracija.postojiPostavka(naziv)) {
+            stanje = false;
+            throw new NeispravnaKonfiguracija("Postavka sa navedenim ključem nije pronađena");
+        } else if (Konfiguracija.dajPostavku(naziv).equals("")) {
+            stanje = false;
+            throw new NeispravnaKonfiguracija("Nije definirana vrijednost konfiguracije u datotečnom sustavu");
+        } else if (!Konfiguracija.dajPostavku(naziv).equals("")) {
+            vrijednostPorta = Integer.parseInt(Konfiguracija.dajPostavku(naziv));
+            if (naziv.equals("port.avioni")) {
+                if (vrijednostPorta < 9000
+                        || vrijednostPorta > 9999) {
+                    stanje = false;
+                    throw new NeispravnaKonfiguracija("Port nije u pravilnom rasponu !");
+                }
+            } 
+        }
+        return stanje;
+    }
+    
+    public void PostaviPortAvioni(){
+       
+        PortAvioni = Integer.parseInt(
+                Konfiguracija.dajPostavku("port.avioni"));
+        
+    }
+    
+    public boolean ZauzetostPorta(int port){
+         try{
+        serverSocket = new ServerSocket(port);
+        serverSocket.close();
+         }catch(IOException exception){
+                return false;
+         }
+         return true;
+    }
+    public void ProvjeraDatoteka(){
+    
+    }
+    
+    
+}

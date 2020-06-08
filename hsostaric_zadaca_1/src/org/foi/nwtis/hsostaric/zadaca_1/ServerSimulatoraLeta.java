@@ -1,0 +1,218 @@
+/*
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
+ */
+package org.foi.nwtis.hsostaric.zadaca_1;
+
+import java.io.File;
+import java.io.IOException;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import org.foi.nwtis.hsostaric.konfiguracije.Konfiguracija;
+import org.foi.nwtis.hsostaric.konfiguracije.KonfiguracijaApstraktna;
+import org.foi.nwtis.hsostaric.konfiguracije.NeispravnaKonfiguracija;
+import org.foi.nwtis.hsostaric.konfiguracije.NemaKonfiguracije;
+
+/**
+ * Klasa koja predstavlja poslužitelja za simulator leta. Na njega se preko
+ * mrežne utičnice spaja dretva sa poslužitelja SimulatorAviona te za razliku od
+ * prethodnog poslužitelja radi u slijednome radu. Provjerava u kojoj su
+ * trenutnoj poziciji avioni poslani sa prethodnog servera te ažurira i dodaje
+ * vrijednosti u prikladnu kolekciju.
+ *
+ * @author Hrvoje Šoštarić
+ */
+public class ServerSimulatoraLeta {
+
+    public Konfiguracija Konfiguracija;
+    public String UlazniParametri = "";
+    public String RegEx = "";
+    public ServerSocket serverSocket;
+    boolean uvjet = false;
+    String datoteka;
+    int port;
+    private Socket socketSimulatoraLeta;
+    public static List<ZahtjevLeta> ZahtjeviLetova;
+    public ServerSocket posluzitelj;
+    public Socket veza;
+    public Thread zahtjev;
+    public boolean Kraj = false;
+
+    /**
+     * Main metoda u kojoj se kreira objekt klase ServerSimulatoraLeta te se
+     * poziva metoda Kreni koja pokreće metode za obavljanje poslova.
+     *
+     * @param args ulazni parametar koji predstavlja konfiguracijsku datoteku
+     */
+    public static void main(String[] args) {
+        ServerSimulatoraLeta simulatoraLeta = new ServerSimulatoraLeta();
+        try {
+            simulatoraLeta.Kreni(args);
+        } catch (Exception ex) {
+            System.err.println(ex.getMessage());
+        }
+    }
+
+    /**
+     * Metoda koja se pokreće u main metodi klase te sadrži pozive metoda za
+     * obavljanje rada.
+     *
+     * @param args ulazna vrijednost konfiguracijske datoteke
+     * @throws java.lang.Exception iznimka koja se baca ukoliko dođe do greške
+     * rada
+     */
+    public void Kreni(String[] args) throws Exception {
+
+        int cekaci;
+        String imeDatoteke = args[0];
+        RegEx = "^([\\w-]+)(.xml|.txt|.bin|.json)$";
+        uvjet = ProvjeriUlazneParametre(imeDatoteke, RegEx);
+        if (uvjet == false) {
+            throw new Exception("Pogrešni ulazni parametri !");
+        }
+        datoteka = args[0];
+        ProvijeriPostojanjeDatoteke(datoteka);
+        Konfiguracija = KonfiguracijaApstraktna.preuzmiKonfiguraciju(datoteka);
+        ProvjeriPort(Konfiguracija);
+        port = Integer.parseInt(
+                Konfiguracija.dajPostavku("port.simulator"));
+        uvjet = ZauzetostPorta(port);
+        if (uvjet == false) {
+            throw new NeispravnaKonfiguracija("Port iz konfiguracije je zauzet.");
+        }
+        IspitajCekace("maks.cekaca");
+        cekaci = Integer.parseInt(
+                Konfiguracija.dajPostavku("maks.cekaca"));
+
+        ObradiKorisnika(port, cekaci);
+
+    }
+
+    /**
+     * Metoda koja provjerava ispravnost ulaznog parametra pomoću regularnih
+     * izraza.
+     *
+     * @param args vrijednost koja se unosi prilikom pokretanja servera
+     * @param regex uzorak regularnog izraza prema kojem se utvrđuje ispravnost
+     * @return
+     */
+    public boolean ProvjeriUlazneParametre(String args, String regex) {
+
+        Pattern pattern = Pattern.compile(regex);
+        Matcher m = pattern.matcher(args);
+        return m.find();
+    }
+
+    /**
+     * Metoda koja služi za provjeru postojanja datoteke
+     *
+     * @param datoteka naziv datoteke za koji se provjerava postojanje
+     * @return istinitost postojanja tvrdnje
+     * @throws org.foi.nwtis.hsostaric.konfiguracije.NemaKonfiguracije iznimka
+     * koja se baca u slučaju nepostojanja datoteke konfiguracije
+     *
+     */
+    public boolean ProvijeriPostojanjeDatoteke(String datoteka) throws NemaKonfiguracije {
+        File file = new File(datoteka);
+        if (!file.exists()) {
+            throw new NemaKonfiguracije("Ne postoji unešena datoteka");
+        }
+        return true;
+    }
+
+    /**
+     * Metoda koja provjerava postojanost porta u konfiguraciji te je li ona u
+     * ispravnome formatu.
+     *
+     * @param k parametar konfiguracije sa postavkama
+     * @throws org.foi.nwtis.hsostaric.konfiguracije.NeispravnaKonfiguracija
+     * iznimka koja se baca u slučaju nepostojanja ili neispravne vrijednosti
+     * konfiguracije
+     */
+    public void ProvjeriPort(Konfiguracija k) throws NeispravnaKonfiguracija {
+        if (!k.postojiPostavka("port.simulator")) {
+            throw new NeispravnaKonfiguracija("Konfiguracija za port nije definirana");
+        } else if (k.dajPostavku("port.simulator")
+                .equals("")) {
+            throw new NeispravnaKonfiguracija("Konfiguracija za port je prazan string.");
+        } else {
+            int port;
+            port = Integer.parseInt(k.
+                    dajPostavku("port.simulator"));
+            if (port < 8000
+                    || port > 8999) {
+                throw new NeispravnaKonfiguracija("Port nije u ispravnom intervalu !!");
+            }
+
+        }
+    }
+
+    /**
+     * Metoda koja provjerava je li port za poslužitelja zauzet ili nije.
+     *
+     * @param port vrijednost porta za koji se provjerava zauzetost
+     * @return istinitost zauzetosti porta.
+     */
+    public boolean ZauzetostPorta(int port) {
+        try {
+            serverSocket = new ServerSocket(port);
+            serverSocket.close();
+        } catch (IOException exception) {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Metoda koja provjerava postoji li definirana vrijednost maksimalnih
+     * čekača u konfiguraciji.
+     *
+     * @param kljuc vrijednost koja predstavlja ključ postavke za maksimalne
+     * čekače
+     * @throws org.foi.nwtis.hsostaric.konfiguracije.NemaKonfiguracije iznimka
+     * koja se baca ukoliko ne postoji definirana postavka
+     * @throws org.foi.nwtis.hsostaric.konfiguracije.NeispravnaKonfiguracija
+     * iznimka koja se definira ukoliko je broj maksimalnih čekača u
+     * neispravnome rangu
+     */
+    public void IspitajCekace(String kljuc) throws NemaKonfiguracije, NeispravnaKonfiguracija {
+        if (!Konfiguracija.postojiPostavka(kljuc)) {
+            throw new NemaKonfiguracije("Nije definirana postavka maks.cekaca");
+        } else if (Konfiguracija.dajPostavku(kljuc).equals("")) {
+            throw new NeispravnaKonfiguracija("Postavka maks.cekaca je prazan string");
+        }
+    }
+
+    /**
+     * Metoda koja služi za obradu zahtjeva poslanih sa poslužitelja
+     * ServerAviona.
+     *
+     * @param port vrijednost porta na kojem radi ServerSocket
+     * @param cekaci vrijednost maksimalnih broja klijenata istovremeno na
+     * poslužitelju
+     * @throws java.io.IOException iznimka koja se baca ukoliko dođe do greške
+     * sa mrežnim utičnicama.
+     */
+    public void ObradiKorisnika(int port, int cekaci) throws IOException {
+        serverSocket = new ServerSocket(port, cekaci);
+        ZahtjeviLetova = Collections.synchronizedList(new ArrayList<>());
+        while (true) {
+            try {
+                veza = serverSocket.accept();
+                zahtjev = new ZahtjevLeta(veza);
+                zahtjev.start();
+                zahtjev.join();
+            } catch (InterruptedException ex) {
+                System.out.println("Došlo je do greške: " + ex.getMessage());
+            }
+
+        }
+
+    }
+}

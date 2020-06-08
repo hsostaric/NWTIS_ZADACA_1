@@ -1,0 +1,68 @@
+/*
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
+ */
+package org.foi.nwtis.hsostaric.zadaca_1;
+
+import java.io.File;
+import java.net.ServerSocket;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import org.foi.nwtis.hsostaric.konfiguracije.Konfiguracija;
+import org.foi.nwtis.hsostaric.konfiguracije.NemaKonfiguracije;
+
+/**
+ *
+ * @author Hrvoje Šoštarić
+ */
+public class ServerSimulatoraLeta {
+
+    public Konfiguracija Konfiguracija;
+    public String UlazniParametri = "";
+    public String RegEx = "";
+    public ServerSocket serverSocket;
+    boolean uvjet = false;
+    String datoteka;
+
+    public static void main(String[] args) {
+        ServerSimulatoraLeta simulatoraLeta = new ServerSimulatoraLeta();
+        try {
+            simulatoraLeta.Kreni(args);
+        } catch (Exception ex) {
+            System.err.println(ex.getMessage());
+        }
+    }
+
+    public void Kreni(String[] args) throws Exception {
+        RegEx = "^([\\w-]+((.xml|.txt|.bin|.json)){1})$";
+        uvjet = ProvjeriUlazneParametre(args, RegEx);
+        if (uvjet == false) {
+            throw new Exception("Pogrešni ulazni parametri !");
+        }
+        datoteka=args[0];
+        ProvijeriPostojanjeDatoteke(datoteka);
+        
+    }
+
+    public boolean ProvjeriUlazneParametre(String[] args, String regex) {
+
+        if (args.length != 1) {
+            return false;
+        }
+        Pattern pattern = Pattern.compile(regex);
+        Matcher m = pattern.matcher(args[0]);
+        return !m.find();
+    }
+
+     public boolean ProvijeriPostojanjeDatoteke(String datoteka) throws NemaKonfiguracije {
+        File file = new File(datoteka);
+        if (!file.exists()) {
+            System.out.println(datoteka);
+            throw new NemaKonfiguracije("Ne postoji unešena datoteka");
+        }
+        return true;
+    }
+}

@@ -1,0 +1,488 @@
+/*
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
+ */
+package org.foi.nwtis.hsostaric.zadaca_1;
+
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.ObjectOutputStream;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.io.UnsupportedEncodingException;
+import java.net.Socket;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import org.foi.nwtis.hsostaric.konfiguracije.Konfiguracija;
+
+/**
+ *
+ * @author Hrvoje Šoštarić
+ */
+public class ZahtjevAviona extends Thread {
+
+    private final Socket veza;
+    private InputStream inputStream;
+    private OutputStream outputStream;
+    private StringBuilder stringBuilder;
+    private InputStream streamReader;
+    private OutputStreamWriter streamWriter;
+    private String regexUlaznogZahtjeva;
+    private InputStreamReader inputStreamReader;
+    private final ReentrantLock reentrantLock;
+    private Konfiguracija konfiguracija;
+    private Socket vezaPremaLetu;
+    private OutputStreamWriter osw;
+    private OutputStream os;
+    private InputStream ulaz;
+    private InputStreamReader isr;
+
+    public ZahtjevAviona(Socket veza, Konfiguracija konfiguracija, ThreadGroup grupa, String name) {
+        super(grupa, name);
+        this.veza = veza;
+        this.konfiguracija = konfiguracija;
+        reentrantLock = new ReentrantLock(true);
+    }
+
+    @Override
+    public void run() {
+        try {
+            ObradaKlijenta();
+        } catch (IOException ex) {
+            System.out.println("Greška: " + ex.getMessage());
+        } catch (ParseException ex) {
+            System.out.println("Došlo je do greške prilikom parsanja zapisa.");
+        } finally {
+            try {
+                ZatvoriKlijenta();
+            } catch (IOException ex) {
+                System.out.println("Došlo je do greške prilikom zatvaranja klijenta.");
+            }
+        }
+    }
+
+    public synchronized void ObradaKlijenta() throws IOException, ParseException {
+        int bajt;
+        String zahtjev;
+        String odgovor;
+        boolean uvjet;
+        stringBuilder = new StringBuilder();
+        streamReader = veza.getInputStream();
+        inputStreamReader = new InputStreamReader(streamReader, "UTF-8");
+        streamWriter = new OutputStreamWriter(veza.getOutputStream(),
+                "UTF-8");
+        while ((bajt = inputStreamReader.read()) != -1) {
+            stringBuilder.append((char) bajt);
+        }
+        zahtjev = stringBuilder.toString();
+        System.out.println("Dobiveno od klijenta: " + zahtjev);
+        uvjet = IspitajSintaksuZahtjeva(zahtjev);
+        if (uvjet == true) {
+            if (AutentificirajKorisnika(zahtjev) == true) {
+                odgovor = IzvrsiOdredjenuRadnju(zahtjev);
+                VratiKorisnikuPoruku(odgovor);
+
+            } else {
+                VratiKorisnikuPoruku("ERROR 03; Korisničko ime ili lozinka ne odgovaraju;");
+            }
+        } else {
+            VratiKorisnikuPoruku("ERROR 02; Kriva sintaksa zahtjeva;");
+        }
+    }
+
+    public synchronized boolean IspitajSintaksuZahtjeva(String zahtjev) {
+        regexUlaznogZahtjeva = "^(KORISNIK [\\w\\-]{3,10};) (LOZINKA ([\\-\\!\\#a-zA-Z0-9]){3,10};)(( KRAJ;)|( DODAJ ([1-9]|[1][0-9]|20);)"
+                + "|( ISPIS [\\w\\-]+;)|( UZLETIO [\\w\\-]+; POLAZIŠTE [\\w\\-]+; ODREDIŠTE [\\w\\-]+; TRAJANJE [1-9]+;))$";
+        Pattern pattern = Pattern.
+                compile(regexUlaznogZahtjeva);
+        Matcher m = pattern.
+                matcher(zahtjev);
+        return m.find();
+    }
+
+    public synchronized void ZatvoriKlijenta() throws IOException {
+        veza.shutdownInput();
+        veza.shutdownOutput();
+        veza.close();
+        ServerAviona.brojacVeze--;
+    }
+
+    @Override
+    public void interrupt() {
+        super.interrupt(); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    public boolean AutentificirajKorisnika(String zahtjev) {
+        String korisnickoIme;
+        String polje[];
+        String lozinka;
+        boolean uvjet = false;
+        int pocetakLozinke;
+        int pocetak;
+        polje = zahtjev.split(";");
+        pocetak = polje[0].indexOf("KORISNIK");
+        korisnickoIme = polje[0].trim()
+                .substring(pocetak + 9,
+                        polje[0].length())
+                .trim();
+
+        pocetakLozinke = zahtjev.indexOf("LOZINKA");
+        lozinka = polje[1].substring(pocetak + 9,
+                polje[1].length())
+                .trim();
+        for (Korisnik k : ServerAviona.Korisnici) {
+            if (k.getKorisnickoIme().equals(korisnickoIme)
+                    && k.getLozinka().equals(lozinka)) {
+                uvjet = true;
+                break;
+            }
+        }
+        return uvjet;
+    }
+
+    public synchronized void VratiKorisnikuPoruku(String poruka) throws IOException {
+        streamWriter.write(poruka);
+        streamWriter.flush();
+    }
+
+    @Override
+    public synchronized void start() {
+        super.start(); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    public synchronized String IzvrsiOdredjenuRadnju(String zahtjev) throws ParseException {
+        if (zahtjev.contains("KRAJ")) {
+            return IzvrsiKraj();
+        } else if (zahtjev.contains("DODAJ")) {
+            return DodajBrojDretvi(zahtjev);
+        } else if (zahtjev.contains("UZLETIO")
+                && zahtjev.contains("POLAZIŠTE")
+                && zahtjev.contains("ODREDIŠTE")
+                && zahtjev.contains("TRAJANJE")) {
+            return IzvrsiUzletioNaredbu(zahtjev);
+        } else {
+            return IzvrsiNaredbuPozicija(zahtjev);
+        }
+
+    }
+
+    public synchronized String DodajBrojDretvi(String zahtjev) {
+        String maksCekaca = konfiguracija.dajPostavku("maks.cekaca");
+        int maxCekaca = Integer.parseInt(maksCekaca);
+        String[] polje;
+        int dodajN;
+        int noviBrojDretvi;
+        String element;
+        String dodaj;
+        try {
+            polje = zahtjev.split(";");
+            element = polje[2].trim();
+            dodaj = element.substring(6,
+                    element.length());
+            dodajN = Integer.parseInt(dodaj);
+
+            noviBrojDretvi = dodajN + ServerAviona.brojDretvi;
+            if (noviBrojDretvi > maxCekaca) {
+                return "ERROR 12; Novi broj dretvi nemože biti veći od broja max čekača";
+            } else {
+                ServerAviona.brojDretvi = noviBrojDretvi;
+                return "OK;";
+            }
+        } catch (NumberFormatException ex) {
+            return "ERROR 12; " + ex;
+        }
+    }
+
+    public synchronized String IzvrsiKraj() {
+
+        if (!ServerAviona.ListaAviona.
+                isEmpty()) {
+            reentrantLock.lock();
+            try {
+                FileOutputStream out = new FileOutputStream(ServisAviona.nazivDatoteke);
+                try (ObjectOutputStream s = new ObjectOutputStream(out)) {
+                    s.writeObject(ServerAviona.ListaAviona);
+                }
+            } catch (IOException ex) {
+                return "ERROR 11; Problem sa serijalizacijom";
+            } finally {
+                reentrantLock.unlock();
+            }
+        }
+        ServerAviona.kraj = true;
+        ServisAviona.kraj = true;
+        return "OK;";
+    }
+
+    public synchronized String IzvrsiNaredbuPozicija(String zahtjev) {
+        String[] polje;
+        String oznakaAviona;
+        String necistaOznaka;
+        polje = zahtjev.split(";");
+        necistaOznaka = polje[2].trim();
+        oznakaAviona = necistaOznaka.substring(6,
+                necistaOznaka.length());
+        for (Avion avion : ServerAviona.ListaAviona) {
+            if (avion.getNazivAviona()
+                    .equals(oznakaAviona)) {
+                return KomunicirajSaServerom(avion, 0);
+            }
+        }
+        return "ERROR 16; Traženi avion nije pronađen u listi !!!;";
+    }
+
+    public synchronized String IzvrsiUzletioNaredbu(String zahtjev) throws ParseException {
+        String polazisteOcisceno;
+        String uzletisteOcisceno;
+        String polaziste;
+        String uzletiste;
+        String nazivAviona;
+        String trajanje;
+        int trajanjeKonacno;
+        boolean postojanostUzletista;
+        boolean postojanostOdredista;
+        String[] polje;
+        polje = zahtjev.split(";");
+        polazisteOcisceno = polje[3].trim();
+        uzletisteOcisceno = polje[4].trim();
+        polaziste = polazisteOcisceno.substring(10,
+                polazisteOcisceno.length());
+        uzletiste = uzletisteOcisceno.substring(10, uzletisteOcisceno
+                .length());
+        nazivAviona = polje[2].trim().
+                substring(8, polje[2]
+                        .length() - 1);
+        trajanje = polje[5].trim()
+                .substring(9, polje[5]
+                        .length() - 1);
+        postojanostOdredista = ProvjeriPostojanostAerodroma(polaziste);
+        postojanostUzletista = ProvjeriPostojanostAerodroma(uzletiste);
+        if (postojanostOdredista == false
+                || postojanostUzletista == false) {
+            return "ERROR 13; Aerodromi ne odgovaraju zapisima u listi;";
+        }
+        return radSPodacimaAvoina(nazivAviona, trajanje, polaziste, uzletiste);
+    }
+
+    public synchronized boolean ProvjeriPostojanostAerodroma(String naziv) {
+        for (Aerodrom aerodrom : ServerAviona.Aerodoromi) {
+            if (aerodrom.getIcao()
+                    .equals(naziv)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public synchronized String radSPodacimaAvoina(String oznaka, String interval,
+            String aerodromPolijetanja, String aerodromSlijetanja) throws ParseException {
+        Avion av;
+        int mod = 1;
+        String aerodromPol = dajNazivAerodroma(aerodromPolijetanja);
+        String aerodromSli = dajNazivAerodroma(aerodromSlijetanja);
+        if (!ServerAviona.ListaAviona
+                .isEmpty()) {
+            for (Avion avion : ServerAviona.ListaAviona) {
+                if (avion.getNazivAviona()
+                        .equals(oznaka)) {
+                    if (!avion.getNazivAeorodromaPolijetanja()
+                            .equals(aerodromPol)
+                            || !avion.getNazivAeorodromaSlijetanja()
+                                    .equals(aerodromSli)) {
+                        return "ERROR 14; Avion postoji, ali aerodorom polijetanja i slijetanja nisu isti;";
+                    } else {
+                        av = avion;
+                        return KomunicirajSaServerom(av, mod);
+                    }
+                }
+            }
+
+            return DodajAvionUKolekciju(oznaka, interval, aerodromPol, aerodromSli, mod);
+        } else if (ServerAviona.ListaAviona
+                .isEmpty()) {
+            return DodajAvionUKolekciju(oznaka, interval, aerodromPol, aerodromSli, mod);
+        }
+
+        return "ERROR";
+    }
+
+    public synchronized String DodajAvionUKolekciju(String oznaka, String interval, String aerodromPolijetanja,
+            String aerodormSlijetanja, int mod) throws ParseException {
+
+        Avion avion;
+        avion = SloziAvion(oznaka, interval, aerodromPolijetanja, aerodormSlijetanja);
+        synchronized (ServerAviona.ListaAviona) {
+            ServerAviona.ListaAviona
+                    .add(avion);
+        }
+        return KomunicirajSaServerom(avion, mod);
+    }
+
+    public synchronized Avion SloziAvion(String oznaka, String interval,
+            String aerodromPolijetanja, String aerodromSlijetanja) throws ParseException {
+        Avion avion = null;
+        String polijetanje = FormatiranoTrenutnoVrijeme();
+        Date trenutniDatum = formatirajStringuDate(polijetanje);
+        int seconds = Integer.parseInt(interval);
+        String slijetanje = dodajSekundeDatumu(trenutniDatum, seconds);
+        avion = new Avion(oznaka, aerodromPolijetanja, aerodromSlijetanja, polijetanje, slijetanje);
+        return avion;
+    }
+
+    public synchronized String FormatiranoTrenutnoVrijeme() {
+        SimpleDateFormat formatDatuma = new SimpleDateFormat("yyyy.MM.dd HH:mm:ss");
+        Date date = new Date();
+        return formatDatuma.format(date);
+
+    }
+
+    public synchronized Date formatirajStringuDate(String zapis) throws ParseException {
+        SimpleDateFormat formatDatuma = new SimpleDateFormat("yyyy.MM.dd HH:mm:ss");
+        return formatDatuma.parse(zapis);
+    }
+
+    public synchronized String dodajSekundeDatumu(Date datum, int sekunde) {
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTime(datum);
+        calendar.add(Calendar.SECOND, sekunde);
+        SimpleDateFormat formatDatuma = new SimpleDateFormat("yyyy.MM.dd HH:mm:ss");
+        Date dat = calendar.getTime();
+        return formatDatuma.format(dat);
+    }
+
+    public synchronized String dajNazivAerodroma(String oznaka) {
+        String naziv = "";
+        for (Aerodrom aerodrom : ServerAviona.Aerodoromi) {
+            if (aerodrom.getIcao()
+                    .equals(oznaka)) {
+                naziv = aerodrom.getNaziv();
+            }
+        }
+        return naziv;
+    }
+
+    public synchronized String KomunicirajSaServerom(Avion avion, int mod) {
+
+        String upit;
+
+        String adresa = veza.getLocalAddress()
+                .toString()
+                .replace("/", "")
+                .trim();
+        int port = dajPortZaLetove();
+        try {
+            vezaPremaLetu = new Socket(adresa, port);
+            ulaz = vezaPremaLetu.getInputStream();
+            os = vezaPremaLetu.getOutputStream();
+            osw = new OutputStreamWriter(os, "UTF-8");
+            upit = urediKomanduZaServerLetova(avion, mod);
+            osw.write(upit);
+            osw.flush();
+            vezaPremaLetu.shutdownOutput();
+            return VracenOdgovorOdLeta( mod, avion);
+        } catch (IOException ex) {
+            System.out.println("Greška: " + ex);
+        } finally {
+            try {
+                ZatvoriVezuPremaLetovima();
+            } catch (IOException ex) {
+            }
+        }
+        return "ERROR 15; Pogreška kod komunikacije sa serverom";
+    }
+
+    public synchronized String urediKomanduZaServerLetova(Avion avion, int mod) {
+        if (mod == 1) {
+            return "LET " + avion.getNazivAviona() + "; "
+                    + "POLIJETANJE " + avion.getVrijemePolijetanja() + "; "
+                    + "SLIJETANJE " + avion.getVrijemeSlijetanja() + ";";
+        }
+        return "POZICIJA: " + avion.getNazivAviona() + ";";
+    }
+
+    public synchronized void ZatvoriVezuPremaLetovima() throws IOException {
+        
+        
+        vezaPremaLetu.close();
+
+    }
+
+    public synchronized String VracenOdgovorOdLeta(int mod, Avion avion) {
+        try {
+            String odgovor;
+            
+            StringBuilder sb = new StringBuilder();
+            int red;
+            isr = new InputStreamReader(ulaz, "UTF-8");
+            while ((red = isr.read()) != -1) {
+                sb.append((char) red);
+            }
+            odgovor = sb.toString();
+            vezaPremaLetu.shutdownInput();
+            System.out.println("Odgovor: " + odgovor);
+            if (mod == 1) {
+                return odgovorZaLet(odgovor, avion);
+            } else {
+                return OdgovorZaIspis(odgovor);
+            }
+        } catch (UnsupportedEncodingException ex) {
+            System.out.println(ex.getMessage());
+        } catch (IOException ex) {
+            System.out.println(ex.getMessage());
+        }
+        return "Greska";
+    }
+
+    public synchronized String odgovorZaLet(String odgovor, Avion avion) {
+        if (odgovor.startsWith("ERROR")) {
+            return "ERROR 15; Server simulatora leta je vratio grešku;";
+        } else {
+            Koordinata polaziste = vratiKordinatuAerodroma(avion
+                    .getNazivAeorodromaPolijetanja());
+            Koordinata odrediste = vratiKordinatuAerodroma(avion.
+                    getNazivAeorodromaSlijetanja());
+            int d = IzracunajUdaljenost(polaziste, odrediste);
+            return "OK; UDALJENOST " + d + ";";
+        }
+    }
+
+    ////metode za vraćanje kordinate aerodroma
+    public synchronized Koordinata vratiKordinatuAerodroma(String aerodrom) {
+
+        for (Aerodrom a : ServerAviona.Aerodoromi) {
+            if (a.getNaziv().
+                    equals(aerodrom)) {
+                return a.getKoridinate();
+            }
+        }
+        return null;
+    }
+
+    ///metoda koje će vratiti udaljenost aerodroma
+    public synchronized int IzracunajUdaljenost(Koordinata polijetanje, Koordinata slijetanje) {
+        int udaljenost = Koordinata.
+                izracunajUdaljenost(polijetanje, slijetanje);
+        return udaljenost;
+    }
+
+    public synchronized String OdgovorZaIspis(String odgovor) {
+        if (odgovor.startsWith("OK;")) {
+            return odgovor;
+        }
+        return "ERROR 16; Traženog leta nema u listi ili je greška kod formatiranja datuma;";
+    }
+
+    public synchronized int dajPortZaLetove() {
+        String port;
+        port = konfiguracija.dajPostavku("port.simulator");
+        return Integer.parseInt(port);
+    }
+}

@@ -1,0 +1,89 @@
+/*
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
+ */
+package org.foi.nwtis.hsostaric.zadaca_1;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.net.Socket;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+/**
+ *
+ * @author Hrvoje Šoštarić
+ */
+public class ZahtjevAviona extends Thread {
+
+    private final Socket veza;
+    private InputStream inputStream;
+    private OutputStream outputStream;
+    private StringBuilder stringBuilder;
+    private InputStream streamReader;
+    private OutputStreamWriter streamWriter;
+    private String regexUlaznogZahtjeva;
+
+    public ZahtjevAviona(Socket veza) {
+        this.veza = veza;
+    }
+
+    @Override
+    public void run() {
+        try {
+            ObradaKlijenta();
+        } catch (IOException ex) {
+            System.out.println("Greška: " + ex.getMessage());
+        } finally {
+            try {
+                ZatvoriKlijenta();
+            } catch (IOException ex) {
+                System.out.println("Došlo je do greške prilikom zatvaranja klineta.");
+            }
+        }
+    }
+
+    public synchronized void ObradaKlijenta() throws IOException {
+        int bajt;
+        String zahtjev = "";
+        stringBuilder = new StringBuilder();
+        streamReader = veza.getInputStream();
+        streamWriter = new OutputStreamWriter(veza.getOutputStream(), "UTF-8");
+        while ((bajt = streamReader.read()) != -1) {
+            stringBuilder.append((char) bajt);
+        }
+        zahtjev = stringBuilder.toString();
+
+        VratiKorisnikuPoruku(zahtjev);
+    }
+
+    public synchronized void ObradaZahtjevaKorisnika(String zahtjev) {
+            regexUlaznogZahtjeva="";
+    }
+
+    public synchronized void ZatvoriKlijenta() throws IOException {
+        veza.shutdownInput();
+        veza.shutdownOutput();
+        veza.close();
+        ServerAviona.brojacAktivnih--;
+    }
+
+    @Override
+    public void interrupt() {
+        super.interrupt(); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    public synchronized void VratiKorisnikuPoruku(String poruka) throws IOException {
+        streamWriter.write(poruka);
+        streamWriter.flush();
+    }
+
+    @Override
+    public synchronized void start() {
+        super.start(); //To change body of generated methods, choose Tools | Templates.
+    }
+
+}

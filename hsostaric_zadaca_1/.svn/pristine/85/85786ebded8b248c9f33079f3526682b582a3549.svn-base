@@ -1,0 +1,61 @@
+/*
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
+ */
+package org.foi.nwtis.hsostaric.zadaca_1;
+
+import java.io.Serializable;
+import java.util.Date;
+
+/**
+ *
+ * @author Hrvoje Šoštarić
+ */
+public class Avion implements Serializable{
+    private String nazivAviona;
+    private String nazivAeorodroma;
+    private Date vrijemePolijetanja;
+    private Date vrijemeSlijetanja;
+
+    public Avion(String nazivAviona, String nazivAeorodroma, Date vrijemePolijetanja, Date vrijemeSlijetanja) {
+        this.nazivAviona = nazivAviona;
+        this.nazivAeorodroma = nazivAeorodroma;
+        this.vrijemePolijetanja = vrijemePolijetanja;
+        this.vrijemeSlijetanja = vrijemeSlijetanja;
+    }
+
+    public String getNazivAviona() {
+        return nazivAviona;
+    }
+
+    public void setNazivAviona(String nazivAviona) {
+        this.nazivAviona = nazivAviona;
+    }
+
+    public String getNazivAeorodroma() {
+        return nazivAeorodroma;
+    }
+
+    public void setNazivAeorodroma(String nazivAeorodroma) {
+        this.nazivAeorodroma = nazivAeorodroma;
+    }
+
+    public Date getVrijemePolijetanja() {
+        return vrijemePolijetanja;
+    }
+
+    public void setVrijemePolijetanja(Date vrijemePolijetanja) {
+        this.vrijemePolijetanja = vrijemePolijetanja;
+    }
+
+    public Date getVrijemeSlijetanja() {
+        return vrijemeSlijetanja;
+    }
+
+    public void setVrijemeSlijetanja(Date vrijemeSlijetanja) {
+        this.vrijemeSlijetanja = vrijemeSlijetanja;
+    }
+    
+    
+}

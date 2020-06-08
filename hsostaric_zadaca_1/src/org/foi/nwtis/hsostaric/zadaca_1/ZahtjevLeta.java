@@ -1,0 +1,336 @@
+/*
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
+ */
+package org.foi.nwtis.hsostaric.zadaca_1;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.net.Socket;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/**
+ * Klasa koja predstavlja klijentski zahtjev za letove aviona i njihove
+ * pozicije.
+ *
+ * @author Hrvoje Šoštarić
+ */
+public class ZahtjevLeta extends Thread {
+
+    private Socket veza;
+    private InputStream inputStream;
+    private OutputStream outputStream;
+    private StringBuilder stringBuilder;
+    private InputStreamReader streamReader;
+    private OutputStreamWriter streamWriter;
+    private String oznakaAviona;
+    private String vrijemePolijetanje;
+    private String vrijemeSlijetanja;
+
+    /**
+     * Konstruktor klase ZahtjevLeta u kojoj je proslijeđena mrežna utičnica
+     * veze radi dobivanja ulaznog i izlaznog toka podataka.
+     *
+     * @param veza utičnica dobivene veze iz koje se dobivaju ulazni i izlazni
+     * tok
+     */
+    public ZahtjevLeta(Socket veza) {
+        this.veza = veza;
+
+    }
+
+    /**
+     * Metoda koja postavlja vrijednosti zahtjeva za let prije unosa u
+     * kolekciju.
+     *
+     * @param oznaka naziv aviona dobiven iz zahtjeva
+     * @param vrijemePolijetanja vrijeme polijetanja dobiveno iz zahtjeva
+     * @param vrijemeSlijetanja vrijeme slijetanja dobiveno iz zahtjeva
+     */
+    public void PostaviVrijednosti(String oznaka, String vrijemePolijetanja, String vrijemeSlijetanja) {
+        this.oznakaAviona = oznaka;
+        this.vrijemePolijetanje = vrijemePolijetanja;
+        this.vrijemeSlijetanja = vrijemeSlijetanja;
+
+    }
+
+    /**
+     * Metoda koja sadrži radnju koja se izvodi nakon pokretanja dretve, a to je
+     * obrada spojenog zahtjeva.
+     */
+    @Override
+    public void run() {
+        try {
+            ObradaKlijenta();
+        } catch (IOException ex) {
+            System.out.println("Greška: " + ex);
+        } finally {
+            try {
+                ZatvoriKlijenta();
+            } catch (IOException ex) {
+                System.out.println("Došlo je do greške prilikom zatvaranja klijenta.");
+            }
+        }
+    }
+
+    /**
+     * Metoda u kojoj se obrađuje klijent.Obavlja poslove vezane uz primanje
+     * zahtjeva te slanja odgovarajućeg zahtjeva.
+     *
+     * @throws java.io.IOException iznimka koja se baca ukoliko dođe do grešaka
+     * u radu
+     */
+    public synchronized void ObradaKlijenta() throws IOException {
+        int bajt;
+        String zahtjev;
+
+        stringBuilder = new StringBuilder();
+        inputStream = veza.getInputStream();
+        streamReader = new InputStreamReader(inputStream, "UTF-8");
+        while ((bajt = streamReader.read()) != -1) {
+            stringBuilder.append((char) bajt);
+        }
+        zahtjev = stringBuilder.toString();
+        outputStream = veza.getOutputStream();
+        streamWriter = new OutputStreamWriter(veza.getOutputStream(),
+                "UTF-8");
+
+        System.out.println("Dobiven zahtjev: " + zahtjev);
+        if (IspitajSintaksuZahtjeva(zahtjev) == true) {
+            String odgovorKorisniku = PorukaUspjeha(zahtjev);
+            VratiKorisnikuPoruku(odgovorKorisniku);
+        } else {
+            VratiKorisnikuPoruku("ERROR 20; Sintaksa primljenog zahtjeva nije ispravna;");
+        }
+    }
+
+    @Override
+    public synchronized void start() {
+        super.start();
+    }
+
+    /**
+     * Metoda u kojoj se ispituje sintaksa dobivenog zahtjeva od strane
+     * klijenta.
+     *
+     * @param zahtjev komanda dobivena od klijenta
+     * @return istinitost ispravnosti sintakse
+     */
+    public synchronized boolean IspitajSintaksuZahtjeva(String zahtjev) {
+        String regex = "^((LET [\\w-]{3,10}); POLIJETANJE [0-9]{4}.(0[1-9]|1[0-2]).(0[1-9]|[1-2][0-9]|3[0-1])"
+                + " (0[0-9]|1[0-9]|2[0-3]):([0-5][0-9]):([0-5][0-9]); SLIJETANJE [0-9]{4}.(0[1-9]|1[0-2]).(0[1-9]|[1-2][0-9]|3[0-1]"
+                + ") (0[0-9]|1[0-9]|2[0-3]):([0-5][0-9]):([0-5][0-9]);)|(POZICIJA: [\\w-]{3,10};)$";
+        Pattern pattern = Pattern.
+                compile(regex);
+        Matcher m = pattern.
+                matcher(zahtjev);
+        return m.find();
+    }
+
+    /**
+     * Metoda koja zatvara vezu prema klijentu.
+     *
+     * @throws java.io.IOException iznimka koja se baca ukoliko je došlo do
+     * pogreške kod tokova podataka
+     */
+    public synchronized void ZatvoriKlijenta() throws IOException {
+        veza.shutdownInput();
+        veza.shutdownOutput();
+        veza.close();
+    }
+
+    /**
+     * Metoda koja vraća korisniku poruku.
+     *
+     * @param poruka tekst poruke koja se šalje klijentu
+     * @throws java.io.IOException iznimka koja se baca ukoliko dođe do pogreške
+     */
+    public synchronized void VratiKorisnikuPoruku(String poruka) throws IOException {
+        System.out.println("Vraćam poruku: " + poruka);
+        streamWriter.write(poruka);
+        streamWriter.flush();
+    }
+
+    /**
+     * Metoda koja provjerava o kakvom se tipu zahtjeva radi.
+     *
+     * @param zahtjev komanda dobivena od klijenta
+     * @return odgovor prema klijentu ovisno o vrsti naredbe
+     */
+    public synchronized String PorukaUspjeha(String zahtjev) {
+        if (zahtjev.contains("POLIJETANJE")
+                && zahtjev.contains("SLIJETANJE")) {
+            return ProvjeraStanjaAviona(zahtjev);
+        }
+        return ProveriPozicijuAviona(zahtjev);
+    }
+
+    /**
+     * Metoda koja analizira zahtjev za LET te rastavlja zahtjev na dijelove za
+     * daljnju obradu.
+     *
+     * @param zahtjev komanda dobivena od zahtjeva
+     * @return poruka za klijenta
+     */
+    public synchronized String ProvjeraStanjaAviona(String zahtjev) {
+        String[] polje;
+        String oznaka;
+        String polijetanje;
+        String formatPolijetanje;
+        String slijetanje;
+        String formatSlijetanje;
+        polje = zahtjev.split(";");
+        oznaka = polje[0].substring(3,
+                polje[0].length())
+                .trim();
+        polijetanje = polje[1].trim()
+                .substring(11, polje[1]
+                        .length() - 1);
+        slijetanje = polje[2].trim()
+                .substring(10, polje[2]
+                        .length() - 1);
+        try {
+            formatPolijetanje = formatirajDatum(polijetanje);
+            formatSlijetanje = formatirajDatum(slijetanje);
+            PostaviVrijednosti(oznaka, polijetanje, slijetanje);
+            return StanjeUListama();
+        } catch (ParseException ex) {
+            return "ERROR 22; Nije moguće formatirati datum;";
+        }
+
+    }
+
+    /**
+     * Metoda koja formatira datum u format "yyyy.MM.dd HH:mm:ss".
+     * @param datum vrijednost koju je potrebno formatirati
+     */
+    public String formatirajDatum(String datum) throws ParseException {
+        SimpleDateFormat formatDatuma = new SimpleDateFormat("yyyy.MM.dd HH:mm:ss");
+        String date = formatDatuma.parse(datum).
+                toString();
+        return date;
+    }
+
+    /**
+     * Metoda koja provjerava stanje u kolekciji ZahtjevaLeta te ovisno o stanju
+     * izvrši određenu akciju.
+     *
+     * @return poruka koja se šalje prema klijentu ovisno o rezultatu
+     */
+    public synchronized String StanjeUListama() {
+
+        if (ServerSimulatoraLeta.ZahtjeviLetova.isEmpty()) {
+            ServerSimulatoraLeta.ZahtjeviLetova.add(this);
+            return "OK;";
+        }
+        try {
+            return TrenutnoStanjeAviona();
+        } catch (ParseException ex) {
+            return "ERROR 22; Došlo je do pogriješke prilikom parsanja datuma !!!";
+        }
+    }
+
+    /**
+     * Metoda koja provjerava i izvršava radnjuovisno o statusu poslanog
+     * zahtjeva za let.
+     *
+     * @return poruka za klijenta
+     * @throws java.text.ParseException iznimka koja se baca u slučaju da je
+     * došlo do pogreške prilikom prilagođavanja datuma
+     */
+    public synchronized String TrenutnoStanjeAviona() throws ParseException {
+        String trenutno;
+        Date trenutnoUDateu;
+        Date datumSlijetanja;
+        for (ZahtjevLeta element
+                : ServerSimulatoraLeta.ZahtjeviLetova) {
+            if (element.oznakaAviona.equals(
+                    this.oznakaAviona)) {
+                trenutno = FormatiranoTrenutnoVrijeme();
+                trenutnoUDateu = formatirajStringuDate(trenutno);
+                if (trenutnoUDateu.compareTo(
+                        formatirajStringuDate(element.vrijemeSlijetanja)) > 0) {
+                    ServerSimulatoraLeta.ZahtjeviLetova
+                            .remove(element);
+                    ServerSimulatoraLeta.ZahtjeviLetova.add(this);
+
+                } else {
+                    return "ERROR 22; Avion je još u letu;";
+                }
+            }
+        }
+        ServerSimulatoraLeta.ZahtjeviLetova.add(this);
+        return "OK;";
+
+    }
+
+    /**
+     * Metoda koja trenutno vrijeme pretvara u oblik vremena prema uzorku
+     * "yyyy.MM.dd HH:mm:ss".
+     *
+     * @return trenutno vrijeme
+     */
+    public String FormatiranoTrenutnoVrijeme() {
+        SimpleDateFormat formatDatuma = new SimpleDateFormat("yyyy.MM.dd HH:mm:ss");
+        Date date = new Date();
+        return formatDatuma.format(date);
+
+    }
+
+    /**
+     * Metoda koja pretvara String oblik zapisa u zapis tipa Date.
+     *
+     * @param zapis vrijednost datuma u stringu
+     * @return datum u obliku Date
+     * @throws java.text.ParseException greška nastala prilikom konvertiranja
+     * datuma
+     */
+    public Date formatirajStringuDate(String zapis) throws ParseException {
+        SimpleDateFormat formatDatuma = new SimpleDateFormat("yyyy.MM.dd HH:mm:ss");
+        return formatDatuma.parse(zapis);
+    }
+
+    /**
+     *Metoda koja provjerava status naredbe POZICIJA te ovisno o njoj vraća i zahtjev.
+     * @param zahtjev komanda dobivena od klijenta
+     * @return poruka koja se šalkje klijentu
+     */
+    public synchronized String ProveriPozicijuAviona(String zahtjev) {
+        String oznaka;
+        Date datumSlijetanja;
+        Date trenutnoVrijeme;
+        String[] polje = zahtjev.split(":");
+        oznaka = polje[1].trim()
+                .replace(";", "");
+        for (ZahtjevLeta zahtjevAviona : ServerSimulatoraLeta.ZahtjeviLetova) {
+            if (zahtjevAviona.oznakaAviona
+                    .equals(oznaka)) {
+                try {
+                    datumSlijetanja = formatirajStringuDate(zahtjevAviona.vrijemeSlijetanja);
+                    trenutnoVrijeme = formatirajStringuDate(FormatiranoTrenutnoVrijeme());
+                    if (trenutnoVrijeme.compareTo(datumSlijetanja) < 0) {
+                        return "OK; LETI;";
+                    } else {
+                        return "OK; SLETIO;";
+                    }
+                } catch (ParseException ex) {
+                    return "ERROR 23; Pogreška u formatiranju datuma;";
+                }
+            }
+        }
+        return "ERROR 23; Traženog leta nema u listi !;";
+    }
+
+    @Override
+    public String toString() {
+        return "Oznaka: " + this.oznakaAviona + "\nPolijetanje: " + this.vrijemePolijetanje + "\nSlijetanje: " + this.vrijemeSlijetanja;
+    }
+}

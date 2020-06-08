@@ -1,0 +1,392 @@
+/*
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
+ */
+package org.foi.nwtis.hsostaric.zadaca_1;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.io.Reader;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import org.foi.nwtis.hsostaric.konfiguracije.*;
+
+/**
+ *
+ * @author Hrvoje Šoštarić
+ */
+public class ServerAviona {
+
+    public Konfiguracija Konfiguracija;
+    public String UlazniParametri = "";
+    public String RegEx = "";
+    public ServerSocket serverSocket;
+    public int PortAvioni = 0;
+    public ArrayList<Korisnik> Korisnici = null;
+    public ArrayList<Aerodrom> Aerodoromi = null;
+    public ThreadGroup GrupaDretvi;
+    public Thread ServisnaDretva;
+    public ThreadGroup DretveZahtjeva;
+    public static ArrayList<Avion> ListaAviona = new ArrayList<>();
+    public static List<ZahtjevAviona> ListaKlijentskihDretvi;
+    static int brojDretvi = 0;
+    public ZahtjevAviona zahtjevKorisnika;
+    protected InputStreamReader isr;
+    protected OutputStreamWriter osw;
+    protected Iterator<ZahtjevAviona> iterator;
+    static volatile int brojacAktivnih = 0;
+    public Socket veza;
+
+    public static void main(String[] args) {
+
+        System.out.println(args[0] + " " + args[1] + " " + args[2]);
+        try {
+            ServerAviona serverAviona = new ServerAviona();
+            serverAviona.Kreni(args);
+        } catch (NemaKonfiguracije
+                | NeispravnaKonfiguracija
+                | IOException ex) {
+            System.out.println(ex);
+        }
+    }
+
+    public void Kreni(String[] args) throws NemaKonfiguracije, NeispravnaKonfiguracija, IOException {
+        UlazniParametri = pretvoriUlazneParametreUString(args);
+        RegEx = "^[\\w]+(.xml|.txt|.bin|.json) --brojDretvi ([1-9])+$";
+        provijeriRegex(UlazniParametri, RegEx);
+        ProvijeriPostojanjeDatoteke(args[0]);
+        Konfiguracija = KonfiguracijaApstraktna.preuzmiKonfiguraciju(args[0]);
+        ProvjeriPostojanostKonfiguracijeUPostavkama(Konfiguracija, "port.avioni");
+        PostaviPortAvioni();
+        if (this.ZauzetostPorta(PortAvioni) == false) {
+            throw new IOException("Mrežna utičnica vrijednosti port.avioni je zauzeta");
+        }
+        ProvjeraDatoteka(Konfiguracija);
+        KreirajiNapuniKolekcije();
+        ProvjeriSerijaliziranuDatoteku(Konfiguracija);
+        PocetakRadaServisnihPoslova();
+        brojDretvi = Integer.parseInt(args[2]);
+        DretveZaObraduZahtjeva();
+    }
+
+    public String pretvoriUlazneParametreUString(String[] args) {
+        StringBuilder ulaz = new StringBuilder();
+        for (String zapis : args) {
+            ulaz.append(zapis)
+                    .append(" ");
+        }
+        return ulaz.
+                toString()
+                .trim();
+    }
+
+    public void provijeriRegex(String ulaz, String regExIzraz) {
+        Pattern pattern = Pattern.compile(regExIzraz);
+        Matcher m = pattern.matcher(ulaz);
+        if (!m.find()) {
+            System.err.println("Greška sa ulaznim parametrima. ");
+            System.exit(0);
+        }
+    }
+
+    public boolean ProvijeriPostojanjeDatoteke(String datoteka) throws NemaKonfiguracije {
+        File file = new File(datoteka);
+        if (!file.exists()) {
+            System.out.println(datoteka);
+            throw new NemaKonfiguracije("Ne postoji unešena datoteka");
+        }
+        return true;
+    }
+
+    public boolean ProvjeriPostojanostKonfiguracijeUPostavkama(Konfiguracija konfiguracija, String kljucPostavke) throws NeispravnaKonfiguracija {
+        switch (kljucPostavke) {
+            case "port.avioni":
+                return ProvjeriIspravnostPostavkePorta(kljucPostavke);
+            case "datoteka.korisnika":
+                return ProvjeriPostojanostDatotekeKorisnika(kljucPostavke);
+            case "datoteka.aerodromi":
+
+                return ProvjeriPostojanostDatotekeAerodroma(kljucPostavke);
+            default:
+                System.err.println("Pogrešan ključ konfiguracije.");
+                return false;
+        }
+
+    }
+
+    public boolean ProvjeriIspravnostPostavkePorta(String naziv) throws NeispravnaKonfiguracija {
+        boolean stanje = true;
+        int vrijednostPorta;
+        if (!Konfiguracija.postojiPostavka(naziv)) {
+            stanje = false;
+            throw new NeispravnaKonfiguracija("Postavka sa navedenim ključem nije pronađena");
+        } else if (Konfiguracija.dajPostavku(naziv).equals("")) {
+            stanje = false;
+            throw new NeispravnaKonfiguracija("Nije definirana vrijednost konfiguracije u datotečnom sustavu");
+        } else if (!Konfiguracija.dajPostavku(naziv).equals("")) {
+            vrijednostPorta = Integer.parseInt(Konfiguracija.dajPostavku(naziv));
+            if (naziv.equals("port.avioni")) {
+                if (vrijednostPorta < 9000
+                        || vrijednostPorta > 9999) {
+                    stanje = false;
+                    throw new NeispravnaKonfiguracija("Port nije u pravilnom rasponu !");
+                }
+            }
+        }
+        return stanje;
+    }
+
+    public void PostaviPortAvioni() {
+
+        PortAvioni = Integer.parseInt(
+                Konfiguracija.dajPostavku("port.avioni"));
+
+    }
+
+    public boolean ZauzetostPorta(int port) {
+        try {
+            serverSocket = new ServerSocket(port);
+            serverSocket.close();
+        } catch (IOException exception) {
+            return false;
+        }
+        return true;
+    }
+
+    public boolean ProvjeriPostojanostDatotekeKorisnika(String kljucPostavke) throws NeispravnaKonfiguracija {
+        PronađiGreškuPostavkeDatoteke(kljucPostavke);
+        return true;
+    }
+
+    public boolean ProvjeriPostojanostDatotekeAerodroma(String kljucPostavke) throws NeispravnaKonfiguracija {
+        PronađiGreškuPostavkeDatoteke(kljucPostavke);
+        return true;
+    }
+
+    public void PronađiGreškuPostavkeDatoteke(String kljucPostavke) throws NeispravnaKonfiguracija {
+        if (!Konfiguracija.postojiPostavka(kljucPostavke)) {
+            throw new NeispravnaKonfiguracija("Postavka ne postoji u datotečnom sustavu");
+        }
+        if (Konfiguracija.dajPostavku(kljucPostavke)
+                .equals("")) {
+            throw new NeispravnaKonfiguracija("Konfiguracija nije definirana, tj. vraćen je prazan string.");
+        } else {
+            String imeDatoteke = Konfiguracija.dajPostavku(kljucPostavke);
+            File f = new File(Konfiguracija.dajPostavku(kljucPostavke));
+            String nastavak = (kljucPostavke.equals("datoteka.korisnika"))
+                    ? ".xml" : ".csv";
+            if (!f.exists()
+                    || (imeDatoteke.toLowerCase()
+                            .indexOf(nastavak) < 0)) {
+                throw new NeispravnaKonfiguracija("Datoteka korisnika ili aerodroma ne postoji je pogrešnome formatu!");
+            }
+        }
+    }
+
+    public void ProvjeraDatoteka(Konfiguracija konfiguracija) throws NeispravnaKonfiguracija {
+        ProvjeriPostojanostKonfiguracijeUPostavkama(konfiguracija, "datoteka.korisnika");
+        ProvjeriPostojanostKonfiguracijeUPostavkama(konfiguracija, "datoteka.aerodromi");
+
+    }
+
+    public void ProvjeriSerijaliziranuDatoteku(Konfiguracija konfiguracija) {
+
+        if (!Konfiguracija.postojiPostavka("datoteka.avioni")) {
+            System.out.println("Postavka ne postoji u datotečnom sustavu.");
+        }
+        if (Konfiguracija.dajPostavku("datoteka.avioni")
+                .equals("")) {
+            System.out.println("Konfiguracija nije definirana, tj. vraćen je prazan string.");
+        } else {
+            String imeDatoteke = Konfiguracija.dajPostavku("datoteka.avioni");
+            File f = new File(Konfiguracija.dajPostavku("datoteka.avioni"));
+            if (!f.exists()
+                    || (imeDatoteke.toLowerCase()
+                            .indexOf(".bin") < 0)) {
+                System.out.println("Datoteka s avionima ne postoji ili je u pogrešnome formatu!");
+            } else {
+                //TODO napravi učitavanje serijaliziranim podacima
+            }
+        }
+    }
+
+    public void KreirajiNapuniKolekcije() throws IOException {
+
+        Korisnici = new ArrayList<>(NapuniListuKorisnicima(
+                Konfiguracija.dajPostavku("datoteka.korisnika")));
+        Aerodoromi = new ArrayList<>(NapuniKolekcijuAerodromima(
+                Konfiguracija.dajPostavku("datoteka.aerodromi")));
+
+    }
+
+    public ArrayList<Korisnik> NapuniListuKorisnicima(String nazivDatoteke) throws IOException {
+        Korisnik korisnik;
+        ArrayList<Korisnik> lista = new ArrayList<>();
+        File file = new File(nazivDatoteke);
+        Reader fileReader = new FileReader(file);
+        BufferedReader bufReader = new BufferedReader(fileReader);
+        String line;
+        while ((line = bufReader.readLine()) != null) {
+            if (line.contains("key")) {
+                korisnik = new Korisnik(
+                        UhvatiKorisnickoIme(line),
+                        UhvatiLozinku(line));
+                lista.add(korisnik);
+            }
+        }
+        return lista;
+    }
+
+    public String UhvatiKorisnickoIme(String red) {
+        return red.substring(
+                red.indexOf("key=") + 5,
+                red.indexOf(">") - 1);
+    }
+
+    public String UhvatiLozinku(String red) {
+        return red.substring(red.indexOf("\">") + 2,
+                red.lastIndexOf("</"));
+    }
+
+    public ArrayList<Aerodrom> NapuniKolekcijuAerodromima(String nazivDatoteke) throws FileNotFoundException, IOException {
+        Aerodrom aerodrom;
+        ArrayList<Aerodrom> lista = new ArrayList<>();
+        FileReader fileReader = new FileReader(
+                new File(nazivDatoteke));
+        BufferedReader bufferedReader = new BufferedReader(fileReader);
+        String red = bufferedReader.readLine();
+        while ((red = bufferedReader.readLine()) != null) {
+            aerodrom = kreirajAerodrom(red);
+            lista.add(aerodrom);
+        }
+        fileReader.close();
+        bufferedReader.close();
+        return lista;
+    }
+
+    public Aerodrom kreirajAerodrom(String red) {
+        String oznaka;
+        String[] kordinata;
+        Koordinata koordinata;
+        int pocetak = red.indexOf("\"");
+        int zavrsetak = red.indexOf("\",");
+        Aerodrom aerodrom = new Aerodrom();
+        aerodrom.setIcao(
+                red.substring(pocetak + 1, zavrsetak));
+        int pocetak2 = red.indexOf(",\"", zavrsetak);
+        int zavrsetak2 = red.indexOf("\",", pocetak2);
+        aerodrom.setNaziv(
+                red.substring(pocetak2 + 2, zavrsetak2));
+        int pocetak3 = red.indexOf("\"", zavrsetak2);
+        int zavrsetak3 = red.indexOf(",\"", pocetak3 + 2);
+        oznaka = red.substring(pocetak3 + 2, zavrsetak3).replaceAll("\"", "");
+        aerodrom.setDrzava(oznaka);
+        String koordinate = red.substring(zavrsetak3 + 1).
+                replaceAll("\"", "");
+        kordinata = koordinate.split(",");
+        koordinata = new Koordinata();
+        koordinata.geoSirina = KonvertirajString(kordinata[0]);
+        koordinata.geoDuzina = KonvertirajString(kordinata[1]);
+        aerodrom.setKoridinate(koordinata);
+        return aerodrom;
+    }
+
+    public double KonvertirajString(String value) {
+        return Double.parseDouble(value.
+                trim());
+    }
+
+    public void PocetakRadaServisnihPoslova() throws NeispravnaKonfiguracija {
+        GrupaDretvi = new ThreadGroup("hsostaric_SD");
+        if (!Konfiguracija.postojiPostavka("interval.pohrane.aviona")
+                || Konfiguracija.dajPostavku("interval.pohrane.aviona")
+                        .equals("")) {
+            throw new NeispravnaKonfiguracija("Nije pronadjena konfiguracija za interval pohrane aviona");
+        }
+
+        ServisnaDretva = new ServisAviona(Long.parseLong(Konfiguracija.dajPostavku("interval.pohrane.aviona")),
+                Konfiguracija.dajPostavku("datoteka.avioni"),
+                GrupaDretvi, GrupaDretvi.getName() + "_1");
+        ServisnaDretva.start();
+
+    }
+
+    public void DretveZaObraduZahtjeva() throws NemaKonfiguracije, NeispravnaKonfiguracija {
+        ListaKlijentskihDretvi = Collections.synchronizedList(new ArrayList<>());
+        ProvjeriCekace("maks.cekaca");
+        int maksCekaca = Integer.parseInt(
+                Konfiguracija.dajPostavku("maks.cekaca"));
+        try {
+            serverSocket = new ServerSocket(PortAvioni, maksCekaca);
+            while (true) {
+                ObradaKorisnika();
+            }
+        } catch (IOException ex) {
+            System.out.println("Greška: " + ex.getMessage());
+        } catch (InterruptedException ex) {
+            System.out.println(ex);
+        }
+    }
+
+    public void ObradaKorisnika() throws IOException, InterruptedException {
+        veza = serverSocket.accept();
+        if (brojacAktivnih < brojDretvi) {
+            DodajZahtjevUListu(veza);
+            if (ListaKlijentskihDretvi.size() > 0) {
+                synchronized (ListaKlijentskihDretvi) {
+                    for (iterator = ListaKlijentskihDretvi.iterator(); iterator.hasNext();) {
+                        ZahtjevAviona dretva = iterator.next();
+                        OdradiZahtjevKlijenta(dretva, iterator);
+                    }
+                }
+            }
+        } else {
+            PosaljiKlijentuGresku();
+        }
+    }
+
+    public void ProvjeriCekace(String kljuc) throws NemaKonfiguracije, NeispravnaKonfiguracija {
+        if (!Konfiguracija.postojiPostavka(kljuc)) {
+            throw new NemaKonfiguracije("Nije definirana postavka maks.cekaca");
+        } else if (Konfiguracija.dajPostavku(kljuc).equals("")) {
+            throw new NeispravnaKonfiguracija("Postavka maks.cekaca je prazan string");
+        }
+    }
+
+    public void OdradiZahtjevKlijenta(ZahtjevAviona dretva, Iterator<ZahtjevAviona> iterator) throws InterruptedException {
+        dretva.start();
+        iterator.remove();
+    }
+
+    public void DodajZahtjevUListu(Socket veza) {
+
+        zahtjevKorisnika = new ZahtjevAviona(veza);
+        ListaKlijentskihDretvi.add(zahtjevKorisnika);
+        brojacAktivnih++;
+
+    }
+
+    public void PosaljiKlijentuGresku() {
+        try {
+            OutputStream outputStream = veza.getOutputStream();
+            outputStream.write("ERROR 01;Nema vise slobodnih dretvi".getBytes());
+            outputStream.flush();
+            veza.shutdownOutput();
+        } catch (IOException ex) {
+            System.out.println("Greska: " + ex);
+        }
+    }
+}

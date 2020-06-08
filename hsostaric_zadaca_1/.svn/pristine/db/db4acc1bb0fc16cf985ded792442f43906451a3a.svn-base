@@ -1,0 +1,207 @@
+/*
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
+ */
+package org.foi.nwtis.hsostaric.zadaca_1;
+
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.ObjectOutputStream;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.net.Socket;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import org.foi.nwtis.hsostaric.konfiguracije.Konfiguracija;
+
+/**
+ *
+ * @author Hrvoje Šoštarić
+ */
+public class ZahtjevAviona extends Thread {
+
+    private final Socket veza;
+    private InputStream inputStream;
+    private OutputStream outputStream;
+    private StringBuilder stringBuilder;
+    private InputStream streamReader;
+    private OutputStreamWriter streamWriter;
+    private String regexUlaznogZahtjeva;
+    private InputStreamReader inputStreamReader;
+    private final ReentrantLock reentrantLock;
+    private Konfiguracija konfiguracija;
+
+    public ZahtjevAviona(Socket veza,Konfiguracija konfiguracija) {
+        this.veza = veza;
+        this.konfiguracija=konfiguracija;
+        reentrantLock = new ReentrantLock(true);
+    }
+
+    @Override
+    public void run() {
+        try {
+            ObradaKlijenta();
+        } catch (IOException ex) {
+            System.out.println("Greška: " + ex.getMessage());
+        } finally {
+            try {
+                ZatvoriKlijenta();
+            } catch (IOException ex) {
+                System.out.println("Došlo je do greške prilikom zatvaranja klineta.");
+            }
+        }
+    }
+
+    public synchronized void ObradaKlijenta() throws IOException {
+        int bajt;
+        String zahtjev;
+        String odgovor;
+        boolean uvjet;
+        stringBuilder = new StringBuilder();
+        streamReader = veza.getInputStream();
+        inputStreamReader = new InputStreamReader(streamReader, "UTF-8");
+        streamWriter = new OutputStreamWriter(veza.getOutputStream(),
+                "UTF-8");
+        while ((bajt = inputStreamReader.read()) != -1) {
+            stringBuilder.append((char) bajt);
+        }
+        zahtjev = stringBuilder.toString();
+        uvjet = IspitajSintaksuZahtjeva(zahtjev);
+        if (uvjet == true) {
+            if (AutentificirajKorisnika(zahtjev) == true) {
+                odgovor=IzvrsiOdredjenuRadnju(zahtjev);
+                VratiKorisnikuPoruku(odgovor);
+                
+            } else {
+                VratiKorisnikuPoruku("ERROR 03;Korisničko ime ili lozinka ne odgovaraju;");
+            }
+        } else {
+            VratiKorisnikuPoruku("ERROR 02;Kriva sintaksa zahtjeva;");
+        }
+
+    }
+
+    public synchronized boolean IspitajSintaksuZahtjeva(String zahtjev) {
+        regexUlaznogZahtjeva = "^(KORISNIK [\\w\\-]{3,10};) (LOZINKA ([\\-\\!\\#a-zA-Z0-9]){3,10};)(( KRAJ;)|( DODAJ ([1-9]|[1][0-9]|20);)"
+                + "|( ISPIS [\\w\\-]+;)|( UZLETIO [\\w\\-]+; POLAZIŠTE [\\w\\-]+; ODREDIŠTE [\\w\\-]+; TRAJANJE [1-9]+;))$";
+        Pattern pattern = Pattern.
+                compile(regexUlaznogZahtjeva);
+        Matcher m = pattern.
+                matcher(zahtjev);
+        return m.find();
+    }
+
+    public synchronized void ZatvoriKlijenta() throws IOException {
+        veza.shutdownInput();
+        veza.shutdownOutput();
+        veza.close();
+        ServerAviona.brojacAktivnih--;
+    }
+
+    @Override
+    public void interrupt() {
+        super.interrupt(); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    public boolean AutentificirajKorisnika(String zahtjev) {
+        String korisnickoIme;
+        String polje[];
+        String lozinka;
+        boolean uvjet = false;
+        int pocetakLozinke;
+        int pocetak;
+        polje = zahtjev.split(";");
+        pocetak = polje[0].indexOf("KORISNIK");
+        korisnickoIme = polje[0].trim()
+                .substring(pocetak + 9,
+                        polje[0].length())
+                .trim();
+
+        pocetakLozinke = zahtjev.indexOf("LOZINKA");
+        lozinka = polje[1].substring(pocetak + 9,
+                polje[1].length())
+                .trim();
+        for (Korisnik k : ServerAviona.Korisnici) {
+            if (k.getKorisnickoIme().equals(korisnickoIme)
+                    && k.getLozinka().equals(lozinka)) {
+                uvjet = true;
+                break;
+            }
+        }
+        return uvjet;
+    }
+
+    public synchronized void VratiKorisnikuPoruku(String poruka) throws IOException {
+        streamWriter.write(poruka);
+        streamWriter.flush();
+    }
+
+    @Override
+    public synchronized void start() {
+        super.start(); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    public synchronized String IzvrsiOdredjenuRadnju(String zahtjev) {
+        if (zahtjev.contains("KRAJ")) {
+            return IzvrsiKraj();
+        }
+        else if(zahtjev.contains("DODAJ")){
+            return DodajBrojDretvi(zahtjev);
+        }
+        return "";
+    }
+    
+    public synchronized String DodajBrojDretvi(String zahtjev){
+       String maksCekaca= konfiguracija.dajPostavku("maks.cekaca");
+       int maxCekaca= Integer.parseInt(maksCekaca);
+       String[] polje;
+       int dodajN;
+       int noviBrojDretvi;
+       String element;
+       String dodaj;
+       try{
+       polje=zahtjev.split(";");
+       element = polje[2].trim();
+       dodaj= element.substring(6,
+               element.length());
+       dodajN = Integer.parseInt(dodaj);
+           
+       noviBrojDretvi= dodajN+ServerAviona.brojDretvi;
+       System.out.println("Dodaj: "+dodaj+"\nFinalno: "+noviBrojDretvi);
+       if(noviBrojDretvi>maxCekaca){
+            return "ERROR 12;Novi broj dretvi nemože biti veći od broja max čekača";
+       }
+       else{
+           ServerAviona.brojDretvi=noviBrojDretvi;
+           return "OK;";
+       }  }catch(NumberFormatException ex){
+           return "ERROR 12;"+ex;
+       }
+    }
+    
+    public synchronized String IzvrsiKraj() {
+       
+        if (!ServerAviona.ListaAviona. 
+                isEmpty()) {
+            reentrantLock.lock();
+            try {
+                FileOutputStream out = new FileOutputStream(ServisAviona.nazivDatoteke);
+                try (ObjectOutputStream s = new ObjectOutputStream(out)) {
+                    s.writeObject(ServerAviona.ListaAviona);
+                }
+            } catch (IOException ex) {
+                return "ERROR 11; Problem sa serijalizacijom";
+            } finally {
+                reentrantLock.unlock();
+            }
+        } 
+        ServerAviona.kraj = true;
+        ServisAviona.kraj = true;
+        return "OK;";
+    }
+
+}

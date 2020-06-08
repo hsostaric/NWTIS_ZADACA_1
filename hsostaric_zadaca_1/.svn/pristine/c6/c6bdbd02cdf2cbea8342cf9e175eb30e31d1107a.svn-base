@@ -1,0 +1,64 @@
+/*
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
+ */
+package org.foi.nwtis.hsostaric.zadaca_1;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.net.Socket;
+
+/**
+ *
+ * @author Hrvoje Šoštarić
+ */
+public class ZahtjevAviona extends Thread {
+
+    private final Socket veza;
+    private InputStream inputStream;
+    private OutputStream outputStream;
+    private StringBuilder stringBuilder;
+    private InputStreamReader streamReader;
+    private OutputStreamWriter streamWriter;
+
+    public ZahtjevAviona(Socket veza) {
+        this.veza = veza;
+    }
+
+    @Override
+    public  void run() {
+        synchronized(this){
+        try {
+            int bajt;
+            streamReader = new InputStreamReader(veza.getInputStream(), "UTF-8");
+            streamWriter = new OutputStreamWriter(veza.getOutputStream(), "UTF-8");
+            while ((bajt = streamReader.read()) != -1) {
+                stringBuilder.append((char) bajt);
+            }
+            System.out.println(bajt);
+            streamWriter.write("Ščćera sam ti videl džurđu");
+            streamWriter.flush();
+            veza.shutdownOutput();
+            veza.shutdownInput();
+            veza.close();
+
+        } catch (IOException ex) {
+            System.out.println("Greška: "+ex.getMessage());
+        }}
+    }
+
+    @Override
+    public void interrupt() {
+        super.interrupt(); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    @Override
+    public synchronized void start() {
+        super.start(); //To change body of generated methods, choose Tools | Templates.
+    }
+
+}

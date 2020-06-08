@@ -1,0 +1,80 @@
+/*
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
+ */
+package org.foi.nwtis.hsostaric.zadaca_1;
+
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.ObjectOutputStream;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+/**
+ *
+ * @author Hrvoje Šoštarić
+ */
+public class ServisAviona extends Thread {
+
+    private long intervalPohrane;
+    public static String nazivDatoteke;
+
+    public static boolean kraj = false;
+
+    public ServisAviona(long intervalPohrane, String nazivDatoteke, ThreadGroup group, String name) {
+        super(group, name);
+        this.intervalPohrane = intervalPohrane;
+        this.nazivDatoteke = nazivDatoteke;
+
+    }
+
+    @Override
+    public void run() {
+        while (!kraj) {
+            try {
+                Serijaliziraj();
+            } catch (IOException | InterruptedException ex) {
+                System.out.println("Greška kod serijalizacije : " + ex.getMessage());
+            }
+        }
+    }
+
+    public synchronized void Serijaliziraj() throws IOException, InterruptedException {
+        if (!ServerAviona.ListaAviona.isEmpty()) {
+            try {
+
+                long poc = System.currentTimeMillis();
+                synchronized (ServerAviona.ListaAviona) {
+                    FileOutputStream out = new FileOutputStream(this.nazivDatoteke);
+                    try (ObjectOutputStream s = new ObjectOutputStream(out)) {
+                        s.writeObject(ServerAviona.ListaAviona);
+                    }
+                }
+                long trajanje = System.currentTimeMillis() - poc;
+                long pocek = intervalPohrane * 1000;
+                sleep(pocek - trajanje);
+            } catch (IOException | InterruptedException ex) {
+                System.out.println("Greška kod serijalizacije: " + ex.getMessage());
+            }
+        }
+    }
+
+    @Override
+    public void interrupt() {
+        super.interrupt();
+    }
+
+    @Override
+    public synchronized void start() {
+        super.start();
+    }
+
+    public static synchronized Thread.State dajStanjeDretve() {
+        return Thread.currentThread().getState();
+    }
+
+}

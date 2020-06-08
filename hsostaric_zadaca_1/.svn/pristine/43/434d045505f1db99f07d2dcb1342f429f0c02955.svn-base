@@ -1,0 +1,81 @@
+/*
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
+ */
+package org.foi.nwtis.hsostaric.zadaca_1;
+
+import java.io.Serializable;
+import java.util.Date;
+
+/**
+ *
+ * @author Hrvoje Šoštarić
+ */
+public class Avion implements Serializable {
+
+    private String nazivAviona;
+    private String nazivAeorodromaPolijetanja;
+    private String nazivAeorodromaSlijetanja;
+    private String vrijemePolijetanja;
+    private String vrijemeSlijetanja;
+
+    public Avion(String nazivAviona, String nazivAeorodromaPolijetanja, String nazivAeorodromaSlijeanja, String vrijemePolijetanja, String vrijemeSlijetanja) {
+        this.nazivAviona = nazivAviona;
+        this.nazivAeorodromaPolijetanja = nazivAeorodromaPolijetanja;
+        this.nazivAeorodromaSlijetanja = nazivAeorodromaSlijeanja;
+        this.vrijemePolijetanja = vrijemePolijetanja;
+        this.vrijemeSlijetanja = vrijemeSlijetanja;
+    }
+
+    public String getNazivAviona() {
+        return nazivAviona;
+    }
+
+    public void setNazivAviona(String nazivAviona) {
+        this.nazivAviona = nazivAviona;
+    }
+
+    public String getNazivAeorodromaPolijetanja() {
+        return nazivAeorodromaPolijetanja;
+    }
+
+    public void setNazivAeorodromaPolijetanja(String nazivAeorodromaPolijetanja) {
+        this.nazivAeorodromaPolijetanja = nazivAeorodromaPolijetanja;
+    }
+
+    public String getNazivAeorodromaSlijetanja() {
+        return nazivAeorodromaSlijetanja;
+    }
+
+    public void setNazivAeorodromaSlijetanja(String nazivAeorodromaSlijetanja) {
+        this.nazivAeorodromaSlijetanja = nazivAeorodromaSlijetanja;
+    }
+
+    public String getVrijemePolijetanja() {
+        return vrijemePolijetanja;
+    }
+
+    public void setVrijemePolijetanja(String vrijemePolijetanja) {
+        this.vrijemePolijetanja = vrijemePolijetanja;
+    }
+
+    public String getVrijemeSlijetanja() {
+        return vrijemeSlijetanja;
+    }
+
+    public void setVrijemeSlijetanja(String vrijemeSlijetanja) {
+        this.vrijemeSlijetanja = vrijemeSlijetanja;
+    }
+    
+    @Override
+    public String toString(){
+        return "Oznaka aviona:\n"+this.nazivAviona+"\nAerodrom polijetanja: "+this.nazivAeorodromaPolijetanja+
+                "\nAerodrom slijetanja: "+this.nazivAeorodromaSlijetanja+"\nVrijeme polijetanja: "+this.vrijemePolijetanja+
+                "\n Vrijeme slijetanja: "+this.vrijemeSlijetanja;
+    }
+   
+
+  
+
+}

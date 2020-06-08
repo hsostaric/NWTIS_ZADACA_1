@@ -1,0 +1,9 @@
+{
+   "port.simulator": "8001",
+   "port.avioni": "9001",
+   "maks.cekaca": "15",
+   "datoteka.avioni": "avioni.bin",
+   "datoteka.aerodromi": "aerodromi.csv",
+   "datoteka.korisnika": "korisnici.xml",
+   "interval.pohrane.aviona": "5"
+}

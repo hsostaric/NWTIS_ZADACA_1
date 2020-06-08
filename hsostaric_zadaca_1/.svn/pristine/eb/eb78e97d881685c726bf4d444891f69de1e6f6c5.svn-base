@@ -1,0 +1,7 @@
+port.simulator=8000
+port.avioni=9000
+maks.cekaca=5
+datoteka.avioni=avioni.bin
+datoteka.aerodromi=aerodromi.csv
+datoteka.korisnika=korisnici.xml
+interval.pohrane.aviona=30

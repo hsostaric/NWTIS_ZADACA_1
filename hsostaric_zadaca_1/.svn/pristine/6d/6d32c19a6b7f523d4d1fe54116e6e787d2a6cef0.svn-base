@@ -1,0 +1,80 @@
+/*
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
+ */
+package org.foi.nwtis.hsostaric.zadaca_1;
+
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.ObjectOutputStream;
+import java.util.ArrayList;
+import java.util.concurrent.locks.ReentrantLock;
+
+/**
+ *
+ * @author Hrvoje Šoštarić
+ */
+public class ServisAviona extends Thread {
+
+    private long intervalPohrane;
+    public static String nazivDatoteke;
+    public ArrayList<Avion> listaZaSerijalizaciju = new ArrayList<>();
+    private ReentrantLock lock;
+    public static boolean kraj = false;
+
+    public ServisAviona(long intervalPohrane, String nazivDatoteke, ThreadGroup group, String name) {
+        super(group, name);
+        this.intervalPohrane = intervalPohrane;
+        this.nazivDatoteke = nazivDatoteke;
+        lock = new ReentrantLock(true);
+
+    }
+     
+
+    @Override
+    public void run() {
+        while (!kraj) {
+           
+            listaZaSerijalizaciju = ServerAviona.ListaAviona;
+            if (!listaZaSerijalizaciju.isEmpty()) {
+                lock.lock();
+                try {
+                    long poc = System.currentTimeMillis();
+                    Serijaliziraj();
+                    long trajanje = System.currentTimeMillis() - poc;
+                    long pocek = intervalPohrane * 1000;
+                    sleep(pocek - trajanje);
+
+                } catch (IOException | InterruptedException ex) {
+                    System.out.println("Greška kod serijalizacije: " + ex.getMessage());
+                } finally {
+                    lock.unlock();
+                }
+
+            }
+
+        }
+    }
+
+    public synchronized void Serijaliziraj() throws IOException, InterruptedException {
+        FileOutputStream out = new FileOutputStream(this.nazivDatoteke);
+        try (ObjectOutputStream s = new ObjectOutputStream(out)) {
+            s.writeObject(listaZaSerijalizaciju);
+        }
+    }
+
+    @Override
+    public void interrupt() {
+        super.interrupt();
+    }
+
+    @Override
+    public synchronized void start() {
+        System.out.println("Naziv grupe: " + this.getThreadGroup().getName());
+        System.out.println("Ime dretve: " + this.getName());
+
+        super.start();
+    }
+
+}

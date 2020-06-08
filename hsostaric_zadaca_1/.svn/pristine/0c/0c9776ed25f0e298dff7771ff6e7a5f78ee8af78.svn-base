@@ -1,0 +1,146 @@
+/*
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
+ */
+package org.foi.nwtis.hsostaric.zadaca_1;
+
+import java.io.File;
+import java.io.IOException;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import org.foi.nwtis.hsostaric.konfiguracije.Konfiguracija;
+import org.foi.nwtis.hsostaric.konfiguracije.KonfiguracijaApstraktna;
+import org.foi.nwtis.hsostaric.konfiguracije.NeispravnaKonfiguracija;
+import org.foi.nwtis.hsostaric.konfiguracije.NemaKonfiguracije;
+
+/**
+ *
+ * @author Hrvoje Šoštarić
+ */
+public class ServerSimulatoraLeta {
+
+    public Konfiguracija Konfiguracija;
+    public String UlazniParametri = "";
+    public String RegEx = "";
+    public ServerSocket serverSocket;
+    boolean uvjet = false;
+    String datoteka;
+    int port;
+    public ServerSocket posluzitelj;
+    public static List ZahtjeviLetova;
+    public Socket veza;
+    public Thread zahtjevLeta;
+
+    public static void main(String[] args) {
+        ServerSimulatoraLeta simulatoraLeta = new ServerSimulatoraLeta();
+        try {
+            simulatoraLeta.Kreni(args);
+        } catch (Exception ex) {
+            System.err.println(ex.getMessage());
+        }
+    }
+
+    public void Kreni(String[] args) throws Exception {
+        int cekaci;
+        RegEx = "^([\\w-]+((.xml|.txt|.bin|.json)){1})$";
+        uvjet = ProvjeriUlazneParametre(args, RegEx);
+        if (uvjet == false) {
+            throw new Exception("Pogrešni ulazni parametri !");
+        }
+        datoteka=args[0];
+        ProvijeriPostojanjeDatoteke(datoteka);
+        Konfiguracija = KonfiguracijaApstraktna.preuzmiKonfiguraciju(datoteka);
+        ProvjeriPort(Konfiguracija);
+        port = Integer.parseInt(
+                Konfiguracija.dajPostavku("port.simulator"));
+        uvjet= ZauzetostPorta(port);
+        if(uvjet==false){
+            throw new NeispravnaKonfiguracija("Port iz konfiguracije je zauzet.");
+        }
+        IspitajCekace("maks.cekaca");
+        cekaci=Integer.parseInt(
+                Konfiguracija.dajPostavku("maks.cekaca"));
+        ZahtjeviLetova = Collections.synchronizedList(
+                new ArrayList<ZahtjevLeta>());
+        ObradiKorisnika(port,cekaci);
+    }
+
+    public boolean ProvjeriUlazneParametre(String[] args, String regex) {
+
+        if (args.length != 1) {
+            return false;
+        }
+        Pattern pattern = Pattern.compile(regex);
+        Matcher m = pattern.matcher(args[0]);
+        return !m.find();
+    }
+
+     public boolean ProvijeriPostojanjeDatoteke(String datoteka) throws NemaKonfiguracije {
+        File file = new File(datoteka);
+        if (!file.exists()) {
+            System.out.println(datoteka);
+            throw new NemaKonfiguracije("Ne postoji unešena datoteka");
+        }
+        return true;
+    }
+     public void ProvjeriPort(Konfiguracija k) throws NeispravnaKonfiguracija{
+         if(!k.postojiPostavka("port.simulator")){
+             throw new NeispravnaKonfiguracija("Konfiguracija za port nije definirana");
+         }
+         else if(k.dajPostavku("port.simulator")
+                 .equals("")){
+             throw new NeispravnaKonfiguracija("Konfiguracija za port je prazan string.");
+         }else{
+             int port;
+             port = Integer.parseInt(k.
+                     dajPostavku("port.simulator"));
+             
+             if(port<8000 || 
+                     port>8999){
+             throw new NeispravnaKonfiguracija("Port nije u ispravnom intervalu !!");
+             }
+            
+             
+         }
+     }
+      public boolean ZauzetostPorta(int port) {
+        try {
+            serverSocket = new ServerSocket(port);
+            serverSocket.close();
+        } catch (IOException exception) {
+            return false;
+        }
+        return true;
+    }
+      
+    public void IspitajCekace(String kljuc) throws NemaKonfiguracije, NeispravnaKonfiguracija{
+    if (!Konfiguracija.postojiPostavka(kljuc)) {
+            throw new NemaKonfiguracije("Nije definirana postavka maks.cekaca");
+        } else if (Konfiguracija.dajPostavku(kljuc).equals("")) {
+            throw new NeispravnaKonfiguracija("Postavka maks.cekaca je prazan string");
+        }
+    }
+
+    public void ObradiKorisnika(int port, int cekaci) throws IOException {
+        serverSocket= new ServerSocket(port, cekaci);
+        while(true){
+            try {
+                veza= serverSocket.accept();
+                zahtjevLeta = new ZahtjevLeta(veza);
+                zahtjevLeta.start();
+                zahtjevLeta.join();
+            } catch (InterruptedException ex) {
+                System.out.println("Došlo je do greške: "+ex.getMessage());
+            }
+        }
+        
+    }
+}
